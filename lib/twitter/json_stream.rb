@@ -228,7 +228,7 @@ module Twitter
 
       unless (q = query).empty?
         if @options[:method].to_s.upcase == 'GET'
-          request_uri << "?#{q}"
+          request_uri += "?#{q}"  # << will overwrite the options value
         else
           content = q
         end
@@ -255,7 +255,7 @@ module Twitter
 
       if @options[:headers]
         @options[:headers].each do |name,value|
-            data << "#{name}: #{value}"
+          data << "#{name}: #{value}"
         end
       end
 
@@ -311,7 +311,10 @@ module Twitter
         :token_secret => @options[:oauth][:access_secret]
       }
 
-      SimpleOAuth::Header.new(@options[:method], uri, params, oauth)
+      # SimpleOAuth will try to esacpe the params we give it so we need to
+      # pass it the raw params hash.
+      #
+      SimpleOAuth::Header.new(@options[:method], uri, raw_params, oauth)
     end
 
     # Scheme (https if ssl, http otherwise) and host part of URL
@@ -323,9 +326,7 @@ module Twitter
     # nil values are skipped
     def params
       flat = {}
-      @options[:params].merge( :track => @options[:filters] ).each do |param, val|
-        next if val.to_s.empty? || (val.respond_to?(:empty?) && val.empty?)
-        val = val.join(",") if val.respond_to?(:join)
+      raw_params.each do |param, val|
         flat[escape(param)] = escape(val)
       end
       flat
@@ -333,6 +334,26 @@ module Twitter
 
     def query
       params.map{|pair| pair.join("=")}.sort.join("&")
+    end
+
+    # Ensure that we don't over write the track param
+    # if it is supplied as an option.
+    #
+    def merged_params
+      {:track => @options[:filters]}.merge @options[:params]
+    end
+
+    # Return the params unescaped but with joins
+    # for convenience.
+    #
+    def raw_params
+      raw = {}
+      merged_params.each do |param, val|
+        next if val.to_s.empty? || (val.respond_to?(:empty?) && val.empty?)
+        val = val.join(",") if val.respond_to?(:join)
+        raw[param] = val
+      end
+      raw
     end
 
     def escape str
